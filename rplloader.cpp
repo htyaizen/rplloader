@@ -31,6 +31,7 @@ public:
 	void*		load_start;
 	bool readElfHeader();
 	bool reserveAddressSpace();
+	bool mapSections();
 };
 
 class RPLLoader {
@@ -54,6 +55,7 @@ RPLLibrary* RPLLoader::open(std::string const& path) {
 	lib->load_start = nullptr;
 	if (!lib->readElfHeader()) goto fail;
 	if (!lib->reserveAddressSpace()) goto fail;
+	if (!lib->mapSections()) goto fail;
 	
 	return lib;
 fail:
@@ -104,17 +106,40 @@ bool RPLLibrary::reserveAddressSpace() {
 		}
 	}
 	size_t mysize = PAGE_END(max_addr) - PAGE_START(min_addr);
-	load_start = mmap(load_start, mysize, PROT_NONE,
+	load_start = mmap(load_start, mysize,
+		PROT_READ | PROT_WRITE | PROT_EXEC,
 		MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	if (load_start == MAP_FAILED) return false;
 	return true;
 }
 
-
+bool RPLLibrary::mapSections() {
+	// mmap is for smart people
+	for (int i = 0; i < ehdr->e_shnum; i++) {
+		Elf32_Shdr* s = &shdr[i];
+		if (!SectionIsAlloc(s)) continue;
+		if (s->sh_type == SHT_NOBITS) continue;
+		void* start_addr = (void*)
+			(((uintptr_t) load_start) + s->sh_addr);
+		off_t seekoff = lseek(fd, s->sh_offset, SEEK_SET);
+		if (seekoff == -1) {
+			return false;
+		}
+		ssize_t readresult = read(fd, start_addr, s->sh_size);
+		if (readresult == -1) {
+			return false;
+		}
+	}
+	return true;
+}
 
 int main(int argc, char** argv) {
 	RPLLoader loader;
 	RPLLibrary* handle = loader.open(argv[1]);
+	if (handle == nullptr) {
+		std::cerr << "failed to load" << std::endl;
+		return 0;
+	}
 	loader.close(handle);
 	return 0;
 }

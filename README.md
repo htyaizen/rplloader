@@ -13,10 +13,12 @@ Currently implemented:
 - Read executable header
 - Read section headers
 - Reserve address space
+- Read sections into memory with standard file IO
 
 Todo:
 
-- Map/decompress sections into memory
+- Decompress sections
+- Map sections into memory with mmap if possible
 - apply relocations and imports
 - Do something about the RPL import/exports table (current plan is to ignore it)
 - provide dlsym
