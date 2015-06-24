@@ -13,6 +13,9 @@
 #define PAGE_START(x) ((x) & PAGE_MASK)
 #define PAGE_OFFSET(x) ((x) & ~PAGE_MASK)
 #define PAGE_END(x) (PAGE_START((x) + (PAGE_SIZE - 1)))
+// RPL has import/export sections here; ignore them when loading
+// We do not resolve with export IDs, but with symbol table entries
+#define VIRTUAL_SECTION_ADDR (0xc0000000)
 
 class RPLLoader;
 class RPLLibrary;
@@ -84,7 +87,27 @@ bool RPLLibrary::readElfHeader() {
 	return true;
 }
 
+static bool SectionIsAlloc(Elf32_Shdr* s) {
+	return (s->sh_flags & SHF_ALLOC) &&
+		(s->sh_addr < VIRTUAL_SECTION_ADDR);
+}
+
 bool RPLLibrary::reserveAddressSpace() {
+	Elf32_Addr min_addr = shdr[0].sh_addr;
+	Elf32_Addr max_addr = min_addr + shdr[0].sh_size;
+	for (int i = 1; i < ehdr->e_shnum; i++) {
+		Elf32_Shdr* s = &shdr[i];
+		if (!SectionIsAlloc(s)) continue;
+		if (s->sh_addr < min_addr) min_addr = s->sh_addr;
+		if (s->sh_addr + s->sh_size > max_addr) {
+			max_addr = s->sh_addr + s->sh_size;
+		}
+	}
+	size_t mysize = PAGE_END(max_addr) - PAGE_START(min_addr);
+	load_start = mmap(load_start, mysize, PROT_NONE,
+		MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (load_start == MAP_FAILED) return false;
+	return true;
 }
 
 

@@ -12,10 +12,11 @@ Currently implemented:
 
 - Read executable header
 - Read section headers
+- Reserve address space
 
 Todo:
 
-- Reserve address space
 - Map/decompress sections into memory
 - apply relocations and imports
+- Do something about the RPL import/exports table (current plan is to ignore it)
 - provide dlsym
