@@ -8,6 +8,8 @@
 #include <errno.h>
 #include <sys/mman.h>
 
+#include <zlib.h>
+
 #define PAGE_SIZE (4096)
 #define PAGE_MASK (~4095)
 #define PAGE_START(x) ((x) & PAGE_MASK)
@@ -16,6 +18,7 @@
 // RPL has import/export sections here; ignore them when loading
 // We do not resolve with export IDs, but with symbol table entries
 #define VIRTUAL_SECTION_ADDR (0xc0000000)
+#define SHF_RPL_COMPRESSED (0x08000000)
 
 class RPLLoader;
 class RPLLibrary;
@@ -32,6 +35,8 @@ public:
 	bool readElfHeader();
 	bool reserveAddressSpace();
 	bool mapSections();
+	bool mapCompressedSection(Elf32_Shdr* s);
+	uint32_t getSectionUncompressedSize(Elf32_Shdr* s);
 };
 
 class RPLLoader {
@@ -94,15 +99,25 @@ static bool SectionIsAlloc(Elf32_Shdr* s) {
 		(s->sh_addr < VIRTUAL_SECTION_ADDR);
 }
 
+uint32_t RPLLibrary::getSectionUncompressedSize(Elf32_Shdr* s) {
+	if (!(s->sh_flags & SHF_RPL_COMPRESSED)) return s->sh_size;
+	uint32_t size = 0;
+	lseek(fd, s->sh_offset, SEEK_SET);
+	read(fd, &size, sizeof(size));
+	fprintf(stderr, "size: %x\n", size);
+	return size;
+}
+	
+
 bool RPLLibrary::reserveAddressSpace() {
 	Elf32_Addr min_addr = shdr[0].sh_addr;
-	Elf32_Addr max_addr = min_addr + shdr[0].sh_size;
+	Elf32_Addr max_addr = min_addr + getSectionUncompressedSize(&shdr[0]);
 	for (int i = 1; i < ehdr->e_shnum; i++) {
 		Elf32_Shdr* s = &shdr[i];
 		if (!SectionIsAlloc(s)) continue;
 		if (s->sh_addr < min_addr) min_addr = s->sh_addr;
-		if (s->sh_addr + s->sh_size > max_addr) {
-			max_addr = s->sh_addr + s->sh_size;
+		if (s->sh_addr + getSectionUncompressedSize(s) > max_addr) {
+			max_addr = s->sh_addr + getSectionUncompressedSize(s);
 		}
 	}
 	size_t mysize = PAGE_END(max_addr) - PAGE_START(min_addr);
@@ -119,6 +134,10 @@ bool RPLLibrary::mapSections() {
 		Elf32_Shdr* s = &shdr[i];
 		if (!SectionIsAlloc(s)) continue;
 		if (s->sh_type == SHT_NOBITS) continue;
+		if (s->sh_flags & SHF_RPL_COMPRESSED) {
+			if (!mapCompressedSection(s)) return false;
+			continue;
+		}
 		void* start_addr = (void*)
 			(((uintptr_t) load_start) + s->sh_addr);
 		off_t seekoff = lseek(fd, s->sh_offset, SEEK_SET);
@@ -129,6 +148,31 @@ bool RPLLibrary::mapSections() {
 		if (readresult == -1) {
 			return false;
 		}
+	}
+	return true;
+}
+
+bool RPLLibrary::mapCompressedSection(Elf32_Shdr* s) {
+	void* start_addr = (void*)
+		(((uintptr_t) load_start) + s->sh_addr);
+	off_t seekoff = lseek(fd, s->sh_offset + sizeof(uint32_t), SEEK_SET);
+	if (seekoff == -1) {
+		return false;
+	}
+	uint32_t compressed_size = s->sh_size - sizeof(uint32_t);
+	void* buf = malloc(compressed_size);
+	ssize_t readresult = read(fd, buf, compressed_size);
+	if (readresult == -1) {
+		free(buf);
+		return false;
+	}
+	uLongf actualDecompressedSize = getSectionUncompressedSize(s);
+	int unzip = uncompress((Bytef*) start_addr,
+		&actualDecompressedSize,
+		(Bytef*) buf, compressed_size);
+	free(buf);
+	if (unzip != Z_OK) {
+		return false;
 	}
 	return true;
 }
