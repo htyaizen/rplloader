@@ -1,24 +1,24 @@
-Loader for RPL libraries on Linux.
+Linux上的RPL库加载程序。
 
-Large part taken/inspired from Chromium/Android NDK's CrazyLinker.
+大部分来自Chromium / Android NDK的CrazyLinker。
 
-This is intended to be a very simple loader of 32-bit ELF libraries that supports the compressed sections used in the RPL format, and ignore program headers in favour of section headers (RPL doesn't have any). One would cross-compile it for PowerPC and run in QEMU user mode to debug RPL binaries.
+这是一个非常简单的32位ELF库的加载程序，它支持RPL格式使用的压缩部分，忽略程序头，有利于section头部（RPL没有）。一个用于PowerPC交叉编译，并以QEMU用户模式运行，以调试RPL二进制文件。
 
-It's written in C++, uses some C++11 features, and uses CMake to compile.
+它用C ++编写，使用一些C ++ 11功能，并使用CMake编译。
 
-For testing, this can also be used to load (but not apply relocations or execute, of course) other 32-bit ELF libraries, such as i386 ones.
+用于或者用于加载（但不应用重定位或执行）其他32位ELF库，如i386。
 
-Currently implemented:
+目前实现：
 
-- Read executable header
-- Read section headers
-- Reserve address space
-- Read sections into memory with standard file IO
+读可执行文件头
+读section头部
+储备地址空间
+使用标准文件IO将部分读入内存
 
-Todo:
+预计：
 
-- Decompress sections
-- Map sections into memory with mmap if possible
-- apply relocations and imports
-- Do something about the RPL import/exports table (current plan is to ignore it)
-- provide dlsym
+ - 解压section
+ - 尽可能将section映射到mmap内存
+ - 适用重定位和引用
+ - 对RPL导入/导出表执行某些操作（目前的计划是忽略它）
+ - 提供dlsym
